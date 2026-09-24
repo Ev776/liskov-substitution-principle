@@ -1,84 +1,71 @@
-Caso Práctico: Principio de Sustitución de Liskov (LSP)
+# Caso Práctico: Principio de Sustitución de Liskov (LSP)
 
 Este proyecto muestra cómo aplicar el Principio de Sustitución de Liskov (LSP) en un escenario real: un sistema de procesamiento de compras y pagos.
 
-1. El Problema: Romper el contrato de la clase padre
+---
+
+## 1. El Problema: Romper el contrato de la clase padre
 
 El Principio de Sustitución de Liskov establece que los objetos de un programa deben poder ser reemplazados por instancias de sus subtipos sin alterar el correcto funcionamiento del sistema.
 
 Un error común al abusar de la herencia es forzar a una subclase a cumplir con un comportamiento que en realidad no posee:
 
+```csharp
 // Clase base general
-public abstract class MetodoPago
-{
-    public abstract void Cobrar(decimal monto);
+public abstract class MetodoPago 
+{ 
+    public abstract void Cobrar(decimal monto); 
 }
 
 // Subclase que sí puede cobrar al momento
-public class TarjetaCredito : MetodoPago
-{
-    public override void Cobrar(decimal monto)
-    {
-        Console.WriteLine($"Cobro exitoso de ${monto} con Tarjeta.");
-    }
+public class TarjetaCredito : MetodoPago 
+{ 
+    public override void Cobrar(decimal monto) 
+    { 
+        Console.WriteLine($"Cobro exitoso de ${monto} con Tarjeta."); 
+    } 
 }
 
-// ❌ Rompe LSP: una transferencia bancaria no se procesa de inmediato
-public class TransferenciaBancaria : MetodoPago
-{
-    public override void Cobrar(decimal monto)
-    {
+// Rompe LSP: una transferencia bancaria no se procesa de inmediato
+public class TransferenciaBancaria : MetodoPago 
+{ 
+    public override void Cobrar(decimal monto) 
+    { 
         // Provoca un error en ejecución porque no puede cumplir la promesa del padre
-        throw new NotSupportedException("Una transferencia no puede cobrar de inmediato.");
-    }
+        throw new NotSupportedException("Una transferencia no puede cobrar de inmediato."); 
+    } 
 }
+```
 
+---
 
-¿Por qué esto es un problema en producción?
+## 2. La Solución: Diseñar contratos adecuados (Interfaces)
 
-Cualquier servicio del sistema que espere un MetodoPago asume que al invocar Cobrar() la transacción se completará. Si el usuario selecciona transferencia bancaria, el programa lanzará una excepción imprevista en tiempo de ejecución, obligando a los desarrolladores a parchar el código con validaciones del estilo:
+En lugar de forzar a todas las clases a implementar una acción que no les corresponde, separamos las responsabilidades usando contratos específicos:
 
-if (metodo is TransferenciaBancaria) { ... }
-
-
-2. La Solución: Separación de contratos por comportamiento
-
-En lugar de crear una jerarquía rígida e irreal, definimos contratos claros y específicos mediante interfaces:
-
-IPagoInmediato: Para métodos que pueden procesar una transacción de forma síncrona (Tarjeta de Crédito, PayPal, Apple Pay).
-
-IPagoDiferido: Para métodos que requieren una referencia previa o trámite externo (Transferencia, OXXO, SPEI).
-
+```csharp
+// Interfaz para pagos procesados al instante
 public interface IPagoInmediato
 {
     void Cobrar(decimal monto);
 }
 
+// Interfaz para pagos que requieren trámite previo
 public interface IPagoDiferido
 {
     string GenerarReferencia(decimal monto);
 }
+```
 
+Con este rediseño:
+* `TarjetaCredito` y `PayPal` implementan `IPagoInmediato`.
+* `TransferenciaBancaria` implementa `IPagoDiferido`.
+* El carrito de compras (`CarritoCompra`) solo solicita un `IPagoInmediato`. Cualquier opción compatible puede sustituir a otra de forma transparente y segura.
 
-Al diseñar de esta forma, el procesador de órdenes solo interactúa con contratos que garantizan la ejecución inmediata:
+---
 
-public class ProcesadorCompras
-{
-    // Cumple LSP al 100%: cualquier subtipo de IPagoInmediato 
-    // puede usarse aquí sin sorpresas ni errores de ejecución.
-    public void ProcesarOrden(IPagoInmediato metodo, decimal total)
-    {
-        metodo.Cobrar(total);
-    }
-}
+## 3. Beneficios Obtenidos
 
-
-3. Beneficios Clave Obtenidos
-
-Cero fallos sorpresa en producción: Se eliminan llamadas a funciones que lanzan errores de "acción no implementada".
-
-Código limpio y sin parches: No se requieren comprobaciones manuales de tipo (is / instanceof / switch) para saber con qué objeto se está operando.
-
-Pruebas unitarias confiables: Facilita reemplazar implementaciones reales por mocks o fakes de prueba sin alterar el flujo del sistema.
-
-Escalabilidad real: Agregar nuevos métodos de pago solo implica implementar la interfaz adecuada, sin tocar ni arriesgar el código central que ya funciona.
+1. **Cero sorpresas en ejecución:** Desaparecen las excepciones inesperadas por métodos no implementados.
+2. **Código sin parches:** No se requieren verificaciones de tipo (`if / is / instanceof`) antes de invocar un método.
+3. **Escalabilidad limpia:** Agregar nuevos métodos compatibles (como Apple Pay o saldo virtual) no exige tocar el código del carrito.
